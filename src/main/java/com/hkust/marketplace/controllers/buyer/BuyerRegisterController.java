@@ -60,7 +60,6 @@ public class BuyerRegisterController {
             return;
         }
 
-        // Create user (demo – password stored as-is)
         User user = new User(username.toLowerCase(), fullName, password, UserRole.BUYER);
         if (residence != null) {
             user.setResidenceHall(residence);

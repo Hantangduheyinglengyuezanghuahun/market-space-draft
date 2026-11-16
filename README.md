@@ -55,6 +55,16 @@ mvn clean javafx:run
 | Seller | `charlie` | `password1`|
 | Seller | `diana`   | `password1`|
 
+## Password Strength Rules
+
+The demo app enforces these rules for new user passwords:
+
+- Minimum length: 8 characters
+- Must contain at least one uppercase letter
+- Must contain at least one lowercase letter
+- Must contain at least one digit
+- Passwords are hashed with PBKDF2 with HMAC-SHA256 before storage in the in-memory demo data layer
+
 ## Features Implemented (UI Only)
 
 ### Shared

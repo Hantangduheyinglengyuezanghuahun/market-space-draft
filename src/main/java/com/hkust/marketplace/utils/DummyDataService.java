@@ -2,7 +2,10 @@ package com.hkust.marketplace.utils;
 
 import com.hkust.marketplace.models.*;
 
-import java.time.LocalDate;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -11,9 +14,12 @@ import java.util.stream.Collectors;
 /**
  * In-memory data store for the frontend demo.
  * All data is lost when the application closes.
- * TODO: Replace this service with real repositories / API clients.
  */
 public class DummyDataService {
+
+    private static final String PASSWORD_HASH_PREFIX = "pbkdf2:";
+    private static final byte[] PASSWORD_SALT = "HKUST-Marketplace-demo-salt".getBytes(StandardCharsets.UTF_8);
+    private static final int PASSWORD_ITERATIONS = 120_000;
 
     private static final DummyDataService INSTANCE = new DummyDataService();
 
@@ -68,30 +74,69 @@ public class DummyDataService {
         return INSTANCE;
     }
 
+    public static String hashPassword(String password) {
+        if (password == null || password.isBlank()) {
+            return "";
+        }
+        try {
+            PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), PASSWORD_SALT, PASSWORD_ITERATIONS, 256);
+            byte[] hash = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+                    .generateSecret(spec)
+                    .getEncoded();
+            return PASSWORD_HASH_PREFIX + Base64.getEncoder().encodeToString(hash);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Unable to hash password.", e);
+        }
+    }
+
+    public boolean verifyPassword(User user, String password) {
+        if (user == null || password == null) {
+            return false;
+        }
+        String stored = user.getPasswordHash();
+        if (stored == null || stored.isBlank()) {
+            return false;
+        }
+        String normalized = stored.trim();
+        if (normalized.equals(password)) {
+            return true;
+        }
+        return normalized.equals(hashPassword(password));
+    }
+
+    public boolean verifyPassword(String username, String password) {
+        User user = findUser(username);
+        return verifyPassword(user, password);
+    }
+
+    public static String normalizeUsername(String username) {
+        return username == null ? "" : username.trim().toLowerCase(Locale.ROOT);
+    }
+
     private void seedData() {
         // Admin
-        User admin = new User("admin", "System Admin", "admin123", UserRole.ADMIN);
+        User admin = new User("admin", "System Admin", hashPassword("admin123"), UserRole.ADMIN);
         admin.setFullName("HKUST Marketplace Admin");
         users.put("admin", admin);
 
         // Sample buyers
-        User buyer1 = new User("alice", "Alice Chan", "password1", UserRole.BUYER);
+        User buyer1 = new User("alice", "Alice Chan", hashPassword("password1"), UserRole.BUYER);
         buyer1.setResidenceHall("Hall 3");
         users.put("alice", buyer1);
 
-        User buyer2 = new User("bob", "Bob Wong", "password1", UserRole.BUYER);
+        User buyer2 = new User("bob", "Bob Wong", hashPassword("password1"), UserRole.BUYER);
         buyer2.setResidenceHall("Off-campus");
         users.put("bob", buyer2);
 
         // Sample sellers
-        User seller1 = new User("charlie", "Charlie Lee", "password1", UserRole.SELLER);
+        User seller1 = new User("charlie", "Charlie Lee", hashPassword("password1"), UserRole.SELLER);
         seller1.setBio("Final year CSE student selling textbooks and gadgets.");
         seller1.setPreferredMeetup("Library");
         seller1.setAverageRating(4.7);
         seller1.setRatingCount(12);
         users.put("charlie", seller1);
 
-        User seller2 = new User("diana", "Diana Ng", "password1", UserRole.SELLER);
+        User seller2 = new User("diana", "Diana Ng", hashPassword("password1"), UserRole.SELLER);
         seller2.setBio("Selling furniture and kitchen items before graduation.");
         seller2.setPreferredMeetup("Hall 5 Lobby");
         seller2.setAverageRating(4.3);
@@ -178,15 +223,24 @@ public class DummyDataService {
 
     // ========== User methods ==========
     public boolean usernameExists(String username) {
-        return users.containsKey(username.toLowerCase());
+        return users.containsKey(normalizeUsername(username));
     }
 
     public User findUser(String username) {
-        return users.get(username.toLowerCase());
+        return users.get(normalizeUsername(username));
     }
 
     public void registerUser(User user) {
-        users.put(user.getUsername().toLowerCase(), user);
+        if (user == null || user.getUsername() == null || user.getUsername().isBlank()) {
+            throw new IllegalArgumentException("User username is required.");
+        }
+        String normalizedUsername = normalizeUsername(user.getUsername());
+        String storedPassword = user.getPasswordHash();
+        if (storedPassword != null && !storedPassword.isBlank() && !storedPassword.startsWith(PASSWORD_HASH_PREFIX)) {
+            user.setPasswordHash(hashPassword(storedPassword));
+        }
+        user.setUsername(normalizedUsername);
+        users.put(normalizedUsername, user);
     }
 
     public Collection<User> getAllUsers() {
